@@ -67,14 +67,14 @@ public class JsonCreator {
         return j.toString();
     }
 
-//    public static String serverAnnounce(String id, int load, String hostname, int port){
-//        JSONObject j = baseJson("SERVER_ANNOUNCE");
-//        j.put("id", id);
-//        j.put("load", load);
-//        j.put("hostname", hostname);
-//        j.put("port", port);
-//        return j.toString();
-//    }
+    public static String serverAnnounce(String id, int load, String hostname, int port){
+        JSONObject j = baseJson("SERVER_ANNOUNCE");
+        j.put("id", id);
+        j.put("load", load);
+        j.put("hostname", hostname);
+        j.put("port", port);
+        return j.toString();
+    }
 
     public static String activityBroadcast(JSONObject activity){
         JSONObject j = baseJson("ACTIVITY_BROADCAST");

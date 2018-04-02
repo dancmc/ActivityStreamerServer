@@ -17,13 +17,12 @@ public class Settings {
     private static String serverId = null;
     private static String localHostname = "localhost";
     private static int localPort = 3780;
-    private static String localSecret = null;
+    private static String secret = null;
     private static String remoteHostname = null;
     private static int remotePort = 3780;
-    private static String remoteSecret = null;
+
 
     private static int activityInterval = 5000; // milliseconds
-    private static String username = "anonymous";
 
     private static void help(Options options){
         String header = "An ActivityStream Server for Unimelb COMP90015\n\n";
@@ -82,28 +81,12 @@ public class Settings {
         Settings.serverId = serverId;
     }
 
-    public static String getLocalSecret() {
-        return localSecret;
+    public static String getSecret() {
+        return secret;
     }
 
-    public static void setLocalSecret(String localSecret) {
-        Settings.localSecret = localSecret;
-    }
-
-    public static String getRemoteSecret() {
-        return remoteSecret;
-    }
-
-    public static void setRemoteSecret(String s) {
-        remoteSecret = s;
-    }
-
-    public static String getUsername() {
-        return username;
-    }
-
-    public static void setUsername(String username) {
-        Settings.username = username;
+    public static void setSecret(String secret) {
+        Settings.secret = secret;
     }
 
     public static String getLocalHostname() {
@@ -188,8 +171,12 @@ public class Settings {
         }
 
         if(cmd.hasOption("s")){
-            setRemoteSecret(cmd.getOptionValue("s"));
+            setSecret(cmd.getOptionValue("s"));
+        } else{
+            // generate the secret and output it
+            Settings.setSecret(Settings.nextSecret());
         }
+        log.info("secret : " + Settings.getSecret());
 
         if(cmd.hasOption("a")){
             try{

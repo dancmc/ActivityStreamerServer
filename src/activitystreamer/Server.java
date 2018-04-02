@@ -22,11 +22,10 @@ public class Server {
 
 	public static void main(String[] args) {
 
+		log.info("starting server");
+
 		// parse all the arguments given
 		Settings.parseArguments(args);
-
-		log.info("starting server");
-		
 
 
 		final Control c = Control.getInstance();
