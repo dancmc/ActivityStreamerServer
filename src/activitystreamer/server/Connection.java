@@ -35,7 +35,13 @@ public class Connection extends Thread {
     private ConnectionType type = null;
     private String connectionId = null; // can be either server or client id
 
-    Connection(Socket socket) throws IOException {
+    Connection(Socket socket, boolean outgoing) throws IOException {
+
+        if(outgoing){
+            setType(Connection.ConnectionType.SERVER);
+            setLoggedIn(true);
+        }
+
         in = new DataInputStream(socket.getInputStream());
         out = new DataOutputStream(socket.getOutputStream());
         inreader = new BufferedReader(new InputStreamReader(in));
@@ -62,18 +68,15 @@ public class Connection extends Thread {
             log.info("closing connection " + Settings.socketAddress(socket));
             try {
                 term = true;
-                inreader.close();
+                in.close();
                 out.close();
+                // todo review
+                interrupt();
             } catch (IOException e) {
                 // already closed?
                 log.error("received exception closing the connection " + Settings.socketAddress(socket) + ": " + e);
             }
         }
-    }
-
-    public void registrationSucceeded() {
-        loggedIn = true;
-
     }
 
 
@@ -88,7 +91,7 @@ public class Connection extends Thread {
             }
             log.debug("connection closed to " + Settings.socketAddress(socket));
             in.close();
-
+//            outwriter.close();
         } catch (IOException e) {
             log.error("connection " + Settings.socketAddress(socket) + " closed with exception: " + e);
 
@@ -131,12 +134,19 @@ public class Connection extends Thread {
                     break;
                 }
 
+                case "INVALID_MESSAGE":{
+
+                    String info  = json.getString("info");
+                    log.error("invalid message : "+info);
+                    return termConnection(null, null);
+                }
+
                 // failed to connect to rh : log error, close connection, and shutdown server
                 case "AUTHENTICATION_FAIL": {
                     String info = json.getString("info");
                     Control.getInstance().setTerm(true);
                     return termConnection(null,
-                            "failed connection to remote host " + Settings.getRemoteHostname() +
+                            "failed authentication to remote host " + Settings.getRemoteHostname() +
                                     ":" + Settings.getRemotePort() +
                                     " using secret " + Settings.getSecret() +
                                     " : " + info);
@@ -144,26 +154,29 @@ public class Connection extends Thread {
 
                 case "LOGIN": {
 
-                    clientId = json.getString("username");
-                    if (!clientId.equalsIgnoreCase("anonymous")) {
+                    String username = json.getString("username");
+                    if (!username.equalsIgnoreCase("anonymous")) {
                         String secret = json.getString("secret");
 
                         // check combination of username and secret, then send success/failure
-                        String storedSecret = Control.getSecretForUser(clientId);
-                        if (storedSecret == null) {
+                        String storedSecret = Control.getSecretForUser(username);
+                        if (!Control.userExists(username)) {
                             String error = "user not registered";
                             return termConnection(JsonCreator.loginFailed(error), error);
-                        } else if (!storedSecret.equals(secret)) {
+                        } else if (!secret.equals(storedSecret)) {
                             String error = "wrong secret";
                             return termConnection(JsonCreator.loginFailed(error), error);
                         }
                     }
 
+                    clientId = username;
                     String loginMessage = "logged in as user " + clientId;
                     writeMsg(JsonCreator.loginSuccess(loginMessage));
                     log.info(loginMessage);
 
-                    Control.incrementCurrentLoad();
+                    if(!loggedIn) {
+                        Control.incrementCurrentLoad();
+                    }
                     type = ConnectionType.CLIENT;
                     loggedIn = true;
 
@@ -193,7 +206,7 @@ public class Connection extends Thread {
                 case "LOGOUT": {
 
                     log.info("client " + clientId + " logged out");
-                    return termConnection(JsonCreator.logout(), null);
+                    return termConnection(null, null);
 
                 }
 
@@ -202,26 +215,30 @@ public class Connection extends Thread {
                     String username = json.getString("username");
 
 
-                    // check that user has logged in & username matches currently logged user
-                    if (clientId == null) {
-                        String error = "Error : No user logged in";
+                    // check that user has logged in & is client
+                    if (!isLoggedIn() || !isClient()) {
+                        String error = "Error : No user client logged in";
                         return termConnection(JsonCreator.authenticationFail(error), error);
                     }
+
+                    // check that username matches currently logged user
                     if (!username.equalsIgnoreCase(clientId)) {
                         String error = "Error : Username does not match currently logged in user";
                         return termConnection(JsonCreator.authenticationFail(error), error);
                     }
 
+                    // if not anonymous, check that secret is correct for username
                     if (!username.equalsIgnoreCase("anonymous")) {
                         String secret = json.getString("secret");
 
                         // check that user exists
-                        String storedSecret = Control.getSecretForUser(username);
-                        if(storedSecret==null){
+
+                        if(!Control.userExists(username)){
                             String error = "Error : User does not exist";
                             return termConnection(JsonCreator.authenticationFail(error), error);
                         }
 
+                        String storedSecret = Control.getSecretForUser(username);
                         // check that username and secret match
                         if(!storedSecret.equals(secret)){
                             String error = "Error : Wrong secret";
@@ -294,7 +311,7 @@ public class Connection extends Thread {
             writeMsg(messageToClient);
         }
         if (errorMessage != null) {
-            log.error("connection " + Settings.socketAddress(socket) + " closed with exception : " + errorMessage);
+            log.error("connection " + Settings.socketAddress(socket) + " closed : " + errorMessage);
         }
         return true;
     }

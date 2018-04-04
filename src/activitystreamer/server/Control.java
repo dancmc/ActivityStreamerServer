@@ -73,8 +73,6 @@ public class Control extends Thread {
 
             try {
                 Connection outgoingConn = outgoingConnection(new Socket(Settings.getRemoteHostname(), Settings.getRemotePort()));
-                outgoingConn.setType(Connection.ConnectionType.SERVER);
-                outgoingConn.setLoggedIn(true);
                 boolean writeResult = outgoingConn.writeMsg(JsonCreator.authenticate(Settings.getSecret()));
 
                 if (!writeResult) {
@@ -181,6 +179,7 @@ public class Control extends Thread {
                     }
 
                     // count number of current other servers (since lock_allowed has no server_id)
+                    // and no servers quit or crash
                     int currentServerCount = serverList.size();
 
                     if (currentServerCount == 0) {
@@ -232,19 +231,21 @@ public class Control extends Thread {
                     if (!userExists(username)) {
                         String lockAllowed = JsonCreator.lockAllowed(username, secret);
                         for (Connection connection : connections) {
-                            if (connection != con && connection.isServer() && connection.isLoggedIn()) {
+                            if (connection.isServer() && connection.isLoggedIn()) {
                                 connection.writeMsg(lockAllowed);
+                                userList.put(username.toLowerCase(), secret);
                             }
                         }
                     } else if (storedSecret != null && !storedSecret.equals(secret)) {
                         String lockDenied = JsonCreator.lockDenied(username, secret);
                         for (Connection connection : connections) {
-                            if (connection != con && connection.isServer() && connection.isLoggedIn()) {
+                            if (connection.isServer() && connection.isLoggedIn()) {
                                 connection.writeMsg(lockDenied);
                             }
                         }
                     }
 
+                    break;
                 }
 
                 case "LOCK_DENIED": {
@@ -308,10 +309,12 @@ public class Control extends Thread {
                     // if is the server originating the request, decrement the count
                     Registration rego = getRegistrationFromPool(username);
                     if (rego != null) {
-                        int latestCount = rego.decrementAndGetAllowsNeeded();
-                        if(latestCount == 0){
-                            addUser(con, username, secret);
-                            return false;
+                        if(rego.getUsername().equalsIgnoreCase(username)&&rego.getSecret().equalsIgnoreCase(secret)) {
+                            int latestCount = rego.decrementAndGetAllowsNeeded();
+                            if (latestCount == 0) {
+                                addUser(rego.getConnection(), rego.getUsername(), rego.getSecret());
+                                return false;
+                            }
                         }
                     }
 
@@ -346,7 +349,7 @@ public class Control extends Thread {
      */
     public synchronized Connection incomingConnection(Socket s) throws IOException {
         log.debug("incomming connection: " + Settings.socketAddress(s));
-        Connection c = new Connection(s);
+        Connection c = new Connection(s, false);
         connections.add(c);
         return c;
 
@@ -357,7 +360,7 @@ public class Control extends Thread {
      */
     public synchronized Connection outgoingConnection(Socket s) throws IOException {
         log.debug("outgoing connection: " + Settings.socketAddress(s));
-        Connection c = new Connection(s);
+        Connection c = new Connection(s, true);
         connections.add(c);
         return c;
 
@@ -435,6 +438,9 @@ public class Control extends Thread {
         // should be safe to remove from ConcurrentHashMap while iterating
         for(Map.Entry<String, Registration> entry : registrationPool.entrySet()){
             if(System.currentTimeMillis() - entry.getValue().getStartTime()>10000){
+
+                // TODO should I send register failed?
+
                 registrationPool.remove(entry.getKey());
                 log.debug("timeout on registration for "+entry.getKey() + ", removed");
             }
@@ -479,7 +485,7 @@ public class Control extends Thread {
     }
 
     public static boolean userExists(String user) {
-        return user != null && userList.contains(user.toLowerCase());
+        return user != null && userList.containsKey(user.toLowerCase());
     }
 
     public static String getSecretForUser(String user) {
@@ -491,7 +497,7 @@ public class Control extends Thread {
     }
 
     public static void addToRegistrationPool(Connection con, String username, String secret, int currentServerCount) {
-        registrationPool.put(username, new Registration(con, username, secret, currentServerCount));
+        registrationPool.put(username, new Registration(con, username.toLowerCase(), secret, currentServerCount));
     }
 
     public static boolean checkRegistrationPoolForUser(String username) {
