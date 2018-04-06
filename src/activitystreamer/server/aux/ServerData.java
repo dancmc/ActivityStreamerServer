@@ -1,5 +1,9 @@
-package activitystreamer.server;
+package activitystreamer.server.aux;
 
+
+/**
+ * Data class to hold data about other servers
+ */
 public class ServerData {
     private String id;
     private int load;

@@ -1,22 +1,16 @@
 package activitystreamer.server;
 
 
-import java.io.BufferedReader;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.net.Socket;
-import java.util.Map;
-
+import activitystreamer.server.aux.ServerData;
 import activitystreamer.util.JsonCreator;
+import activitystreamer.util.Settings;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import activitystreamer.util.Settings;
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import java.io.*;
+import java.net.Socket;
 
 
 public class Connection extends Thread {
@@ -35,12 +29,19 @@ public class Connection extends Thread {
     private ConnectionType type = null;
     private String connectionId = null; // can be either server or client id
 
+    // just for debugging
+    public long timeCreated;
+
+
     Connection(Socket socket, boolean outgoing) throws IOException {
 
+        // if incoming, have to wait for auth/login messages to determine
         if(outgoing){
             setType(Connection.ConnectionType.SERVER);
             setLoggedIn(true);
         }
+
+        timeCreated = System.currentTimeMillis();
 
         in = new DataInputStream(socket.getInputStream());
         out = new DataOutputStream(socket.getOutputStream());
@@ -50,50 +51,53 @@ public class Connection extends Thread {
         start();
     }
 
-    /*
-     * returns true if the message was written, otherwise false
+    /**
+     * Write to output stream of socket
+     *
+     * @param msg string to be written
+     * @return true if connection is open and attempted write, but doesn't necessarily guaranteed msg sent
      */
-    public boolean writeMsg(String msg) {
+    public synchronized boolean writeMsg(String msg) {
         if (open) {
             outwriter.println(msg);
             outwriter.flush();
             return true;
-
         }
         return false;
     }
 
+    /**
+     * Close the connection and cleanup streams
+     */
     public void closeCon() {
         if (open) {
-            log.info("closing connection " + Settings.socketAddress(socket));
+            log.info("INFO - closing connection " + Settings.socketAddress(socket));
             try {
                 term = true;
                 in.close();
                 out.close();
-                // todo review
-                interrupt();
             } catch (IOException e) {
                 // already closed?
-                log.error("received exception closing the connection " + Settings.socketAddress(socket) + ": " + e);
+                log.error("ERROR - exception closing connection " + Settings.socketAddress(socket) + " : " + e);
             }
         }
     }
 
-
+    /**
+     * Run main thread loop
+     */
     public void run() {
         try {
             String data;
             while (!term && (data = inreader.readLine()) != null) {
-
                 // this is probably a terrible way of making sure closeCon() not overwritten if processData is underway
                 term = processData(data) || term;
-
             }
-            log.debug("connection closed to " + Settings.socketAddress(socket));
             in.close();
-//            outwriter.close();
+            outwriter.close();
+            log.debug("INFO - connection to " + Settings.socketAddress(socket) + " closed");
         } catch (IOException e) {
-            log.error("connection " + Settings.socketAddress(socket) + " closed with exception: " + e);
+            log.error("ERROR - connection to " + Settings.socketAddress(socket) + " closed with exception : " + e);
 
         } finally {
             if (isClient()) {
@@ -105,9 +109,14 @@ public class Connection extends Thread {
     }
 
 
+    /**
+     * Processing of data received in individual connection. Calls synchronised Control method if broadcast required
+     *
+     * @param data data string received
+     * @return true if connection should close based on data received
+     */
     private boolean processData(String data) {
 
-        log.debug("received : " +data);
 
         try {
             JSONObject json = new JSONObject(data);
@@ -118,36 +127,32 @@ public class Connection extends Thread {
                 case "AUTHENTICATE": {
                     String secret = json.getString("secret");
                     if (!secret.equals(Settings.getSecret())) {
-                        String error = "Error : Wrong secret";
-                        return termConnection(JsonCreator.authenticationFail(error), error);
+                        String error = "wrong secret";
+                        return termConnection(JsonCreator.authenticationFail(error), "AUTHENTICATE - "+error);
                     }
 
                     if (isServer() && loggedIn) {
-                        String error = "Error : Had already authenticated";
-                        return termConnection(JsonCreator.invalidMessage(error), error);
+                        String error = "already authenticated";
+                        return termConnection(JsonCreator.invalidMessage(error), "AUTHENTICATE - "+error);
                     }
 
                     type = ConnectionType.SERVER;
                     loggedIn = true;
 
-                    log.info("Successfully authenticated server");
+                    log.info("AUTHENTICATE - successfully authenticated server");
                     break;
                 }
 
                 case "INVALID_MESSAGE":{
-
                     String info  = json.getString("info");
-                    log.error("invalid message : "+info);
-                    return termConnection(null, null);
+                    return termConnection(null, "INVALID_MESSAGE : "+info);
                 }
 
-                // failed to connect to rh : log error, close connection, and shutdown server
+                // failed to connect to rh : log error, close connection
                 case "AUTHENTICATION_FAIL": {
                     String info = json.getString("info");
-                    Control.getInstance().setTerm(true);
                     return termConnection(null,
-                            "failed authentication to remote host " + Settings.getRemoteHostname() +
-                                    ":" + Settings.getRemotePort() +
+                            "AUTHENTICATION_FAIL - remote host " + Settings.socketAddress(socket)+
                                     " using secret " + Settings.getSecret() +
                                     " : " + info);
                 }
@@ -158,21 +163,22 @@ public class Connection extends Thread {
                     if (!username.equalsIgnoreCase("anonymous")) {
                         String secret = json.getString("secret");
 
-                        // check combination of username and secret, then send success/failure
+                        // validate combination of username and secret & send failure if incorrect
                         String storedSecret = Control.getSecretForUser(username);
                         if (!Control.userExists(username)) {
                             String error = "user not registered";
-                            return termConnection(JsonCreator.loginFailed(error), error);
+                            return termConnection(JsonCreator.loginFailed(error), "LOGIN - "+error);
                         } else if (!secret.equals(storedSecret)) {
                             String error = "wrong secret";
-                            return termConnection(JsonCreator.loginFailed(error), error);
+                            return termConnection(JsonCreator.loginFailed(error), "LOGIN - "+error);
                         }
                     }
 
+                    // otherwise send success
                     clientId = username;
                     String loginMessage = "logged in as user " + clientId;
                     writeMsg(JsonCreator.loginSuccess(loginMessage));
-                    log.info(loginMessage);
+                    log.info("LOGIN_SUCCESS - "+loginMessage);
 
                     if(!loggedIn) {
                         Control.incrementCurrentLoad();
@@ -184,19 +190,21 @@ public class Connection extends Thread {
                     int currentLoad = Control.getCurrentLoad();
                     String newServerId = null;
                     int newServerLoad = Integer.MAX_VALUE;
+
+                    // find a server that is at least 2 load lower
                     for (ServerData server : Control.getServerList().values()) {
                         int serverLoad = server.getLoad();
                         if (currentLoad - serverLoad >= 2 && serverLoad < newServerLoad) {
-                            newServerLoad = serverLoad;
                             newServerId = server.getId();
+                            newServerLoad = serverLoad;
                         }
                     }
 
-                    if (newServerId != null && !newServerId.equals(clientId)) {
+                    if (newServerId != null) {
                         ServerData newServer = Control.getServerList().get(newServerId);
                         String newHostName = newServer.getHostname();
                         int newPort = newServer.getPort();
-                        log.info("redirected client to " + newHostName + ":" + newPort);
+                        log.info("REDIRECT -  to " + newHostName + ":" + newPort);
                         return termConnection(JsonCreator.redirect(newHostName, newPort), null);
                     }
 
@@ -205,7 +213,7 @@ public class Connection extends Thread {
 
                 case "LOGOUT": {
 
-                    log.info("client " + clientId + " logged out");
+                    log.info("LOGOUT - client " + clientId + " logged out");
                     return termConnection(null, null);
 
                 }
@@ -217,14 +225,14 @@ public class Connection extends Thread {
 
                     // check that user has logged in & is client
                     if (!isLoggedIn() || !isClient()) {
-                        String error = "Error : No user client logged in";
-                        return termConnection(JsonCreator.authenticationFail(error), error);
+                        String error = "no user client logged in";
+                        return termConnection(JsonCreator.authenticationFail(error),"ACTIVITY_MESSAGE - " +error);
                     }
 
                     // check that username matches currently logged user
                     if (!username.equalsIgnoreCase(clientId)) {
-                        String error = "Error : Username does not match currently logged in user";
-                        return termConnection(JsonCreator.authenticationFail(error), error);
+                        String error = "username does not match currently logged in user";
+                        return termConnection(JsonCreator.authenticationFail(error), "ACTIVITY_MESSAGE - " +error);
                     }
 
                     // if not anonymous, check that secret is correct for username
@@ -232,17 +240,16 @@ public class Connection extends Thread {
                         String secret = json.getString("secret");
 
                         // check that user exists
-
                         if(!Control.userExists(username)){
-                            String error = "Error : User does not exist";
-                            return termConnection(JsonCreator.authenticationFail(error), error);
+                            String error = "user does not exist";
+                            return termConnection(JsonCreator.authenticationFail(error), "ACTIVITY_MESSAGE - " +error);
                         }
 
-                        String storedSecret = Control.getSecretForUser(username);
                         // check that username and secret match
+                        String storedSecret = Control.getSecretForUser(username);
                         if(!storedSecret.equals(secret)){
-                            String error = "Error : Wrong secret";
-                            return termConnection(JsonCreator.authenticationFail(error), error);
+                            String error = "wrong secret";
+                            return termConnection(JsonCreator.authenticationFail(error), "ACTIVITY_MESSAGE - " +error);
                         }
 
                     }
@@ -255,8 +262,8 @@ public class Connection extends Thread {
 
                     // check that not receiving from an unauthenticated server
                     if(!loggedIn || !isServer()){
-                        String error = "Error : Unauthenticated server";
-                        return termConnection(JsonCreator.invalidMessage(error), error);
+                        String error = "unauthenticated server";
+                        return termConnection(JsonCreator.invalidMessage(error), "SERVER_ANNOUNCE - "+error);
                     }
 
                     return Control.getInstance().process(this, json);
@@ -266,10 +273,11 @@ public class Connection extends Thread {
 
                     // check it has an activity object
                     JSONObject activity = json.getJSONObject("activity");
+
                     // check that activity object is processed
                     if(!activity.has("authenticated_user")){
-                        String error = "Error : Activity object is not properly processed";
-                        return termConnection(JsonCreator.invalidMessage(error), error);
+                        String error = "activity object is not properly processed";
+                        return termConnection(JsonCreator.invalidMessage(error), "ACTIVITY_BROADCAST - "+error);
                     }
 
                     return Control.getInstance().process(this, json);
@@ -300,21 +308,29 @@ public class Connection extends Thread {
 
         } catch (JSONException e) {
             String error = "JSON parse exception : " + e.getMessage();
-            return termConnection(JsonCreator.invalidMessage(error), error);
+            return termConnection(JsonCreator.invalidMessage(error), "INVALID_MESSAGE - "+error);
         }
 
         return false;
     }
 
+    /**
+     * Utility method that writes any outgoing messages or logs before returning true to indicate connection should end
+     *
+     * @param messageToClient client message to write to socket
+     * @param errorMessage error message to log
+     * @return true, passed to thread loop to end connection
+     */
     public boolean termConnection(String messageToClient, String errorMessage) {
         if (messageToClient != null) {
             writeMsg(messageToClient);
         }
         if (errorMessage != null) {
-            log.error("connection " + Settings.socketAddress(socket) + " closed : " + errorMessage);
+            log.error(errorMessage);
         }
         return true;
     }
+
 
     public Socket getSocket() {
         return socket;

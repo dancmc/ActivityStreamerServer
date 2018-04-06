@@ -3,11 +3,13 @@ package activitystreamer.util;
 
 import org.json.JSONObject;
 
-import java.util.Set;
 
+/**
+ * Utility class to generate relevant JSON messages to send
+ */
 public class JsonCreator {
 
-    public static JSONObject baseJson(String command){
+    private static JSONObject baseJson(String command){
         return new JSONObject().put("command", command);
     }
 
@@ -126,18 +128,5 @@ public class JsonCreator {
         return activity.put("authenticated_user", username);
     }
 
-//    public static boolean validateMessage(JSONObject message, JSONObject model){
-//
-//        boolean result = true;
-//        Set<String>  modelKeys = model.keySet();
-//        Set<String> messageKeys = message.keySet();
-//
-//        for(String key : modelKeys){
-//            if(!messageKeys.contains(key)){
-//
-//            }
-//        }
-//
-//    }
 
 }

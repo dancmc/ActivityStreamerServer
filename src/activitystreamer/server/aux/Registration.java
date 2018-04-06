@@ -1,8 +1,13 @@
-package activitystreamer.server;
+package activitystreamer.server.aux;
 
+
+import activitystreamer.server.Connection;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Data class to hold pending registration attempts
+ */
 public class Registration {
 
     private Connection connection;

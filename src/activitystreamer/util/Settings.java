@@ -1,14 +1,14 @@
 package activitystreamer.util;
 
+import org.apache.commons.cli.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.security.SecureRandom;
-
-import org.apache.commons.cli.*;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 public class Settings {
     private static final Logger log = LogManager.getLogger();
@@ -26,7 +26,7 @@ public class Settings {
 
     private static void help(Options options){
         String header = "An ActivityStream Server for Unimelb COMP90015\n\n";
-        String footer = "\ncontact aharwood@unimelb.edu.au for issues.";
+        String footer = "\ncontact mchan@student.unimelb.edu.au for issues.";
         HelpFormatter formatter = new HelpFormatter();
         formatter.printHelp("ActivityStreamer.Server", header, options, footer, true);
         System.exit(-1);

@@ -1,17 +1,19 @@
 package activitystreamer.server;
 
+import activitystreamer.util.Settings;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
-import activitystreamer.util.Settings;
-
+/**
+ * Listener thread to accept new incoming connections and pass them into threads of their own
+ */
 public class Listener extends Thread {
     private static final Logger log = LogManager.getLogger();
-    private ServerSocket serverSocket = null;
+    private ServerSocket serverSocket;
     private boolean term = false;
     private int portnum;
 
@@ -23,25 +25,33 @@ public class Listener extends Thread {
 
     @Override
     public void run() {
-        log.info("listening for new connections on " + portnum);
+        log.info("INFO - listening for new connections on " + portnum);
         while (!term) {
             Socket clientSocket;
             try {
+                // client socket could be a server or client connecting, but unknown which at this point
                 clientSocket = serverSocket.accept();
                 Control.getInstance().incomingConnection(clientSocket);
 
-                // client socket could be a server or client connecting
-
             } catch (IOException e) {
-                log.info("received exception, shutting down");
+                log.error("ERROR - listener server socket received exception, shutting down");
                 term = true;
             }
         }
     }
 
+    /**
+     * To terminate listener thread when closing down
+     * @param term whether listener should terminate
+     */
     public void setTerm(boolean term) {
         this.term = term;
-        if (term) interrupt();
+        try {
+            log.info("INFO - closing server socket");
+            serverSocket.close();
+        } catch (IOException e){
+            log.error("ERROR - error closing server socket");
+        }
     }
 
 
