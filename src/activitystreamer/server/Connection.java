@@ -74,8 +74,8 @@ public class Connection extends Thread {
             log.info("INFO - closing connection " + Settings.socketAddress(socket));
             try {
                 term = true;
-                in.close();
-                out.close();
+                open = false;
+                socket.close();
             } catch (IOException e) {
                 // already closed?
                 log.error("ERROR - exception closing connection " + Settings.socketAddress(socket) + " : " + e);
@@ -93,8 +93,7 @@ public class Connection extends Thread {
                 // this is probably a terrible way of making sure closeCon() not overwritten if processData is underway
                 term = processData(data) || term;
             }
-            in.close();
-            outwriter.close();
+            socket.close();
             log.debug("INFO - connection to " + Settings.socketAddress(socket) + " closed");
         } catch (IOException e) {
             log.error("ERROR - connection to " + Settings.socketAddress(socket) + " closed with exception : " + e);
@@ -106,6 +105,7 @@ public class Connection extends Thread {
             Control.getInstance().connectionClosed(this);
         }
         open = false;
+        outwriter.close();
     }
 
 
@@ -160,6 +160,8 @@ public class Connection extends Thread {
                 case "LOGIN": {
 
                     String username = json.getString("username");
+
+                    // if username is not anonymous, do some checks
                     if (!username.equalsIgnoreCase("anonymous")) {
                         String secret = json.getString("secret");
 
