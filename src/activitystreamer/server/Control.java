@@ -70,7 +70,7 @@ public class Control extends Thread {
         // also check that remote host and port are not local
         if (Settings.getRemoteHostname() != null) {
 
-            if (!Settings.getLocalHostname().equals(Settings.getRemoteHostname()) &&
+            if (Settings.getLocalHostname().equals(Settings.getRemoteHostname()) &&
                     Settings.getRemotePort() == Settings.getLocalPort()) {
 
                 log.error("tried to connect to self on " + Settings.getRemoteHostname() + ":" + Settings.getRemotePort());
@@ -85,6 +85,7 @@ public class Control extends Thread {
                 if (!writeResult) {
                     throw new IOException("connection not open");
                 }
+
 
             } catch (IOException e) {
                 log.error("failed to make connection to " + Settings.getRemoteHostname() + ":" + Settings.getRemotePort() + " : " + e);
@@ -211,7 +212,7 @@ public class Control extends Thread {
 
                     // put processed activity into a broadcast message and send to other servers/clients
                     String activityBroadcast = JsonCreator.activityBroadcast(processedActivityObject);
-                    Pair<Integer, Integer> result = broadcastToAll(processCon, activityBroadcast);
+                    Pair<Integer, Integer> result = broadcastToAll(processCon, activityBroadcast, true);
                     log.info("ACTIVITY_MESSAGE - forwarded to " + result.fst + " servers, " + result.snd + " clients");
 
                     break;
@@ -235,7 +236,7 @@ public class Control extends Thread {
                     }
 
                     // forward to all other servers
-                    broadcastToServers(processCon, json.toString());
+                    broadcastToServers(processCon, json.toString(), false);
                     log.info("SERVER_ANNOUNCE - from " + hostname + ":" + port + ", load : " + load);
 
                     break;
@@ -244,8 +245,8 @@ public class Control extends Thread {
 
                 case "ACTIVITY_BROADCAST": {
 
-                    Pair<Integer, Integer> result = broadcastToAll(processCon, json.toString());
-                    log.info("ACTIVITY_BROADCAST - forwarded to " + result.fst + " servers, " + result.snd + " clients");
+                    Pair<Integer, Integer> result = broadcastToAll(processCon, json.toString(), false);
+                    log.info("ACTIVITY_BROADCAST received - forwarded to " + result.fst + " servers, " + result.snd + " clients");
 
                     break;
                 }
@@ -264,13 +265,13 @@ public class Control extends Thread {
                     }
 
                     // check that user isn't null
-                    if(username==null){
+                    if (username == null) {
                         String error = "null username";
                         return processCon.termConnection(JsonCreator.invalidMessage(error), "INVALID_MESSAGE - " + error);
                     }
 
                     // check that secret isn't null
-                    if(secret==null){
+                    if (secret == null) {
                         String error = "null secret";
                         return processCon.termConnection(JsonCreator.invalidMessage(error), "INVALID_MESSAGE - " + error);
                     }
@@ -299,9 +300,13 @@ public class Control extends Thread {
                     // add username to registration pool
                     addToRegistrationPool(processCon, username, secret, currentServerCount);
 
+                    // todo review
+                    // also add username/secret to local storage first (as per Aaron's test server behaviour)
+                    addUser(username, secret);
+
                     // send out lock request
                     String lockRequest = JsonCreator.lockRequest(username, secret);
-                    broadcastToServers(processCon, lockRequest);
+                    broadcastToServers(processCon, lockRequest, false);
                     log.info("REGISTER - lock request broadcast");
 
                     // replies from other servers will be processed when lock_allowed and lock_denied msgs arrive
@@ -322,7 +327,7 @@ public class Control extends Thread {
                     }
 
                     // forward the lock request
-                    int result = broadcastToServers(processCon, json.toString());
+                    int result = broadcastToServers(processCon, json.toString(), false);
                     log.info("LOCK_REQUEST - forwarded to " + result + " servers");
 
                     // check if username is known and generate broadcast for denied or allowed
@@ -338,6 +343,7 @@ public class Control extends Thread {
                         }
                         log.info("LOCK_REQUEST - broadcast LOCK_ALLOWED in response");
                     } else if (storedSecret != null && !storedSecret.equals(secret)) {
+                        // only send LOCK_DENIED if username known with DIFFERENT secret (as per spec)
                         String lockDenied = JsonCreator.lockDenied(username, secret);
                         for (Connection connection : connections) {
                             if (connection.isServer() && connection.isLoggedIn()) {
@@ -369,7 +375,7 @@ public class Control extends Thread {
                     }
 
                     // forward to other servers
-                    int result = broadcastToServers(processCon, json.toString());
+                    int result = broadcastToServers(processCon, json.toString(), false);
                     log.info("LOCK_DENIED - forwarded to " + result + " servers");
 
                     // if is the server originating the request, send denied, close connection, and remove pending rego
@@ -398,13 +404,13 @@ public class Control extends Thread {
                     }
 
                     // forward to other servers
-                    int result = broadcastToServers(processCon, json.toString());
+                    int result = broadcastToServers(processCon, json.toString(), false);
                     log.info("LOCK_ALLOWED - forwarded to " + result + " servers");
 
                     // if is the server originating the request, decrement the count
                     Registration rego = getRegistrationFromPool(username);
                     if (rego != null) {
-                        if (rego.getUsername().equalsIgnoreCase(username) && rego.getSecret().equalsIgnoreCase(secret)) {
+                        if (rego.getUsername().equals(username) && rego.getSecret().equals(secret)) {
                             int latestCount = rego.decrementAndGetAllowsNeeded();
                             log.info("REGISTER status for " + username + " : waiting for " + latestCount + " more LOCK_ALLOWED");
 
@@ -479,10 +485,10 @@ public class Control extends Thread {
      * Simple way to broadcast to all logged in client/server connections
      *
      * @param processCon connection which received message triggering broadcast
-     * @param broadcast string to be broadcast
+     * @param broadcast  string to be broadcast
      * @return pair of counts of servers & clients successfully sent to
      */
-    private Pair<Integer, Integer> broadcastToAll(Connection processCon, String broadcast) {
+    private Pair<Integer, Integer> broadcastToAll(Connection processCon, String broadcast, boolean includeSender) {
 
 
         int serverCount = 0;
@@ -490,7 +496,7 @@ public class Control extends Thread {
 
         // forward to all other authenticated connections (connection has already validated info)
         for (Connection connection : connections) {
-            if (connection != processCon && connection.isLoggedIn()) {
+            if ((includeSender || connection != processCon) && connection.isLoggedIn()) {
                 if (connection.writeMsg(broadcast)) {
                     if (connection.isClient()) {
                         clientCount++;
@@ -507,16 +513,16 @@ public class Control extends Thread {
      * Simple way to broadcast to all logged in server connections
      *
      * @param processCon connection which received message triggering broadcast
-     * @param broadcast string to be broadcast
+     * @param broadcast  string to be broadcast
      * @return counts of servers successfully sent to
      */
-    private int broadcastToServers(Connection processCon, String broadcast) {
+    private int broadcastToServers(Connection processCon, String broadcast, boolean includeSender) {
 
         int count = 0;
 
         // forward to all other servers (connection has already validated info)
         for (Connection connection : connections) {
-            if (connection.isServer() && connection != processCon && connection.isLoggedIn()) {
+            if (connection.isServer() && (includeSender ||connection != processCon) && connection.isLoggedIn()) {
                 if (connection.writeMsg(broadcast)) {
                     count++;
                 }
@@ -532,18 +538,18 @@ public class Control extends Thread {
      * Add user to userlist
      *
      * @param username username string
-     * @param secret secret string
+     * @param secret   secret string
      */
-    private void addUser(String username, String secret){
-        userList.put(username.toLowerCase(), secret);
+    private void addUser(String username, String secret) {
+        userList.put(username, secret);
     }
 
     /**
      * Add user to list if server sent original lock_request and received correct allows
      *
      * @param connection connection originating lock_request
-     * @param username username string
-     * @param secret secret string
+     * @param username   username string
+     * @param secret     secret string
      */
     private void registerSuccessfulUser(Connection connection, String username, String secret) {
         addUser(username, secret);
@@ -556,39 +562,40 @@ public class Control extends Thread {
 
     /**
      * Remove user from list
+     *
      * @param user username string
      */
     private void removeUser(String user) {
         if (user != null) {
-            userList.remove(user.toLowerCase());
+            userList.remove(user);
         }
     }
 
     public static boolean userExists(String user) {
-        return user != null && userList.containsKey(user.toLowerCase());
+        return user != null && userList.containsKey(user);
     }
 
     public static String getSecretForUser(String user) {
         if (user == null) {
             return null;
         } else {
-            return userList.get(user.toLowerCase());
+            return userList.get(user);
         }
     }
 
     public static void addToRegistrationPool(Connection con, String username, String secret, int currentServerCount) {
-        registrationPool.put(username, new Registration(con, username.toLowerCase(), secret, currentServerCount));
+        registrationPool.put(username, new Registration(con, username, secret, currentServerCount));
     }
 
     public static boolean checkRegistrationPoolForUser(String username) {
-        return username != null && registrationPool.containsKey(username.toLowerCase());
+        return username != null && registrationPool.containsKey(username);
     }
 
     public static int getRegistrationRemainingAllowedCount(String username) {
         if (username == null) {
             return -1;
         } else {
-            Registration rego = registrationPool.get(username.toLowerCase());
+            Registration rego = registrationPool.get(username);
             if (rego == null) {
                 return -1;
             } else {
@@ -599,7 +606,7 @@ public class Control extends Thread {
 
     public static void removeRegistrationFromPool(String username) {
         if (username != null) {
-            registrationPool.remove(username.toLowerCase());
+            registrationPool.remove(username);
         }
     }
 
@@ -607,7 +614,7 @@ public class Control extends Thread {
         if (username == null) {
             return null;
         } else {
-            return registrationPool.get(username.toLowerCase());
+            return registrationPool.get(username);
         }
     }
 

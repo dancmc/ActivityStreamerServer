@@ -162,7 +162,7 @@ public class Connection extends Thread {
                     String username = json.getString("username");
 
                     // if username is not anonymous, do some checks
-                    if (!username.equalsIgnoreCase("anonymous")) {
+                    if (!username.equals("anonymous")) {
                         String secret = json.getString("secret");
 
                         // validate combination of username and secret & send failure if incorrect
@@ -232,13 +232,13 @@ public class Connection extends Thread {
                     }
 
                     // check that username matches currently logged user
-                    if (!username.equalsIgnoreCase(clientId)) {
+                    if (!username.equals(clientId)) {
                         String error = "username does not match currently logged in user";
                         return termConnection(JsonCreator.authenticationFail(error), "ACTIVITY_MESSAGE - " +error);
                     }
 
                     // if not anonymous, check that secret is correct for username
-                    if (!username.equalsIgnoreCase("anonymous")) {
+                    if (!username.equals("anonymous")) {
                         String secret = json.getString("secret");
 
                         // check that user exists
@@ -277,10 +277,11 @@ public class Connection extends Thread {
                     JSONObject activity = json.getJSONObject("activity");
 
                     // check that activity object is processed
-                    if(!activity.has("authenticated_user")){
-                        String error = "activity object is not properly processed";
-                        return termConnection(JsonCreator.invalidMessage(error), "ACTIVITY_BROADCAST - "+error);
-                    }
+                    // apparently unnecessary
+//                    if(!activity.has("authenticated_user")){
+//                        String error = "activity object is not properly processed";
+//                        return termConnection(JsonCreator.invalidMessage(error), "ACTIVITY_BROADCAST - "+error);
+//                    }
 
                     return Control.getInstance().process(this, json);
                 }
