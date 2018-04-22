@@ -5,6 +5,7 @@ import activitystreamer.server.Control;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+// TODO remove this class
 public class TestManager extends Thread{
 
     private static final Logger log = LogManager.getLogger();

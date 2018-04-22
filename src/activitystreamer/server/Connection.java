@@ -277,7 +277,7 @@ public class Connection extends Thread {
                     JSONObject activity = json.getJSONObject("activity");
 
                     // check that activity object is processed
-                    // apparently unnecessary
+                    // apparently unnecessary according to LMS
 //                    if(!activity.has("authenticated_user")){
 //                        String error = "activity object is not properly processed";
 //                        return termConnection(JsonCreator.invalidMessage(error), "ACTIVITY_BROADCAST - "+error);

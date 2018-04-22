@@ -237,7 +237,7 @@ public class Control extends Thread {
 
                     // forward to all other servers
                     broadcastToServers(processCon, json.toString(), false);
-                    log.info("SERVER_ANNOUNCE - from " + hostname + ":" + port + ", load : " + load);
+                    log.info("SERVER_ANNOUNCE - from " + id + " at " + hostname + ":" + port + ", load : " + load);
 
                     break;
 
@@ -300,7 +300,6 @@ public class Control extends Thread {
                     // add username to registration pool
                     addToRegistrationPool(processCon, username, secret, currentServerCount);
 
-                    // todo review
                     // also add username/secret to local storage first (as per Aaron's test server behaviour)
                     addUser(username, secret);
 
@@ -522,7 +521,7 @@ public class Control extends Thread {
 
         // forward to all other servers (connection has already validated info)
         for (Connection connection : connections) {
-            if (connection.isServer() && (includeSender ||connection != processCon) && connection.isLoggedIn()) {
+            if (connection.isServer() && (includeSender || connection != processCon) && connection.isLoggedIn()) {
                 if (connection.writeMsg(broadcast)) {
                     count++;
                 }
