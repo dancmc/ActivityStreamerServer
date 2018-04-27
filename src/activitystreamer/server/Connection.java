@@ -52,7 +52,7 @@ public class Connection extends Thread {
     }
 
     /**
-     * Write to output stream of socket
+     * Write to output stream of socket, PrintWriter implementation is threadsafe
      *
      * @param msg string to be written
      * @return true if connection is open and attempted write, but doesn't necessarily guaranteed msg sent
@@ -166,11 +166,10 @@ public class Connection extends Thread {
                         String secret = json.getString("secret");
 
                         // validate combination of username and secret & send failure if incorrect
-                        String storedSecret = Control.getSecretForUser(username);
                         if (!Control.userExists(username)) {
                             String error = "user not registered";
                             return termConnection(JsonCreator.loginFailed(error), "LOGIN - "+error);
-                        } else if (!secret.equals(storedSecret)) {
+                        } else if (!secret.equals(Control.getSecretForUser(username))) {
                             String error = "wrong secret";
                             return termConnection(JsonCreator.loginFailed(error), "LOGIN - "+error);
                         }
@@ -277,7 +276,7 @@ public class Connection extends Thread {
                     JSONObject activity = json.getJSONObject("activity");
 
                     // check that activity object is processed
-                    // apparently unnecessary according to LMS
+                    // apparently unnecessary according to discussion board & test server behaviour
 //                    if(!activity.has("authenticated_user")){
 //                        String error = "activity object is not properly processed";
 //                        return termConnection(JsonCreator.invalidMessage(error), "ACTIVITY_BROADCAST - "+error);

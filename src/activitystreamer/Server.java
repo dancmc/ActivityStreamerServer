@@ -3,7 +3,6 @@ package activitystreamer;
 
 import activitystreamer.server.Control;
 import activitystreamer.util.Settings;
-import activitystreamer.util.TestManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -21,8 +20,6 @@ public class Server {
 
         final Control c = Control.getInstance();
         c.initiateConnection();
-
-        TestManager test = new TestManager();
 
 
         Runtime.getRuntime().addShutdownHook(new Thread() {

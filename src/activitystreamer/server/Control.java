@@ -4,7 +4,6 @@ import activitystreamer.server.aux.Registration;
 import activitystreamer.server.aux.ServerData;
 import activitystreamer.util.JsonCreator;
 import activitystreamer.util.Settings;
-import com.sun.tools.javac.util.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.json.JSONException;
@@ -258,16 +257,17 @@ public class Control extends Thread {
 
                     log.info("REGISTER - attempting registration for " + username + " with secret " + secret);
 
+
+                    // check that username isn't null
+                    if (username == null) {
+                        String error = "null username";
+                        return processCon.termConnection(JsonCreator.invalidMessage(error), "INVALID_MESSAGE - " + error);
+                    }
+
                     // check that the username isn't already in storage
                     if (userExists(username)) {
                         String error = "username " + username + " already registered";
                         return processCon.termConnection(JsonCreator.registerFailed(error), "REGISTER_FAILED - " + error);
-                    }
-
-                    // check that user isn't null
-                    if (username == null) {
-                        String error = "null username";
-                        return processCon.termConnection(JsonCreator.invalidMessage(error), "INVALID_MESSAGE - " + error);
                     }
 
                     // check that secret isn't null
@@ -341,8 +341,8 @@ public class Control extends Thread {
                             }
                         }
                         log.info("LOCK_REQUEST - broadcast LOCK_ALLOWED in response");
-                    } else if (storedSecret != null && !storedSecret.equals(secret)) {
-                        // only send LOCK_DENIED if username known with DIFFERENT secret (as per spec)
+                    } else {
+                        // send LOCK_DENIED if username known regardless of secret (as per discussion board)
                         String lockDenied = JsonCreator.lockDenied(username, secret);
                         for (Connection connection : connections) {
                             if (connection.isServer() && connection.isLoggedIn()) {
@@ -488,7 +488,6 @@ public class Control extends Thread {
      * @return pair of counts of servers & clients successfully sent to
      */
     private Pair<Integer, Integer> broadcastToAll(Connection processCon, String broadcast, boolean includeSender) {
-
 
         int serverCount = 0;
         int clientCount = 0;
@@ -641,5 +640,15 @@ public class Control extends Thread {
 
     public static ConcurrentHashMap<String, ServerData> getServerList() {
         return serverList;
+    }
+
+    private class Pair<A,B>{
+        public A fst;
+        public B snd;
+
+        Pair(A first, B second){
+            fst = first;
+            snd = second;
+        }
     }
 }
