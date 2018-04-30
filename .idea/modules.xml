@@ -3,6 +3,8 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/ActivityStreamerServer.iml" filepath="$PROJECT_DIR$/ActivityStreamerServer.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/ActivityStreamerServer_main.iml" filepath="$PROJECT_DIR$/.idea/modules/ActivityStreamerServer_main.iml" group="ActivityStreamerServer" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/ActivityStreamerServer_test.iml" filepath="$PROJECT_DIR$/.idea/modules/ActivityStreamerServer_test.iml" group="ActivityStreamerServer" />
     </modules>
   </component>
 </project>
